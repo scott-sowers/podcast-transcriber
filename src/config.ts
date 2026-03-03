@@ -17,6 +17,7 @@ const envSchema = z.object({
   TRANSCRIPT_BASE_PATH: z.string().min(1).default("transcripts"),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SECRET_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1).optional(),
   CHROMA_API_KEY: z.string().min(1).optional(),
   CHROMA_TENANT: z.string().min(1).optional(),
   CHROMA_DATABASE: z.string().min(1).optional()

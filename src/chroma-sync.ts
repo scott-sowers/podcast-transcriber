@@ -36,35 +36,28 @@ function requireChromaConfig(config: ReturnType<typeof getConfig>): {
   };
 }
 
-async function loadEmbeddingFunction(apiKey: string): Promise<unknown> {
+async function loadEmbeddingFunction(): Promise<unknown> {
   try {
-    process.env.CHROMA_API_KEY = apiKey;
-    const mod = await import("@chroma-core/chroma-cloud-qwen");
+    const mod = await import("@chroma-core/openai");
     const ctor = (mod as {
-      ChromaCloudQwenEmbeddingFunction?: new (options: {
-        model: string;
-        task: string | null;
+      OpenAIEmbeddingFunction?: new (options: {
         apiKeyEnvVar?: string;
+        modelName?: string;
       }) => unknown;
-      ChromaCloudQwenEmbeddingModel?: { QWEN3_EMBEDDING_0p6B?: string };
-    }).ChromaCloudQwenEmbeddingFunction;
-    const model = (mod as {
-      ChromaCloudQwenEmbeddingModel?: { QWEN3_EMBEDDING_0p6B?: string };
-    }).ChromaCloudQwenEmbeddingModel?.QWEN3_EMBEDDING_0p6B;
+    }).OpenAIEmbeddingFunction;
 
-    if (!ctor || !model) {
-      throw new Error("Required qwen embedding exports not found");
+    if (!ctor) {
+      throw new Error("OpenAIEmbeddingFunction export not found");
     }
 
     return new ctor({
-      model,
-      task: null,
-      apiKeyEnvVar: "CHROMA_API_KEY"
+      apiKeyEnvVar: "OPENAI_API_KEY",
+      modelName: "text-embedding-3-small"
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      "Unable to load Chroma Cloud embedding function. Install with: pnpm add @chroma-core/chroma-cloud-qwen. " +
+      "Unable to load OpenAI embedding function. Install with: pnpm add @chroma-core/openai. " +
         `Underlying error: ${message}`
     );
   }
@@ -156,7 +149,7 @@ function chunkTranscript(markdown: string, maxBytes: number): string[] {
 async function main(): Promise<void> {
   const config = getConfig();
   const chromaConfig = requireChromaConfig(config);
-  const embeddingFunction = await loadEmbeddingFunction(chromaConfig.apiKey);
+  const embeddingFunction = await loadEmbeddingFunction();
 
   const collection = parseFlag("collection") || "podcast-transcripts";
   const limitFlag = parseFlag("limit");

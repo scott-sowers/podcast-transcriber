@@ -12,7 +12,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@chroma-core/chroma-cloud-qwen": "^0.1.9",
+    "@chroma-core/openai": "^0.1.9",
     "@chroma-core/default-embed": "^0.1.9",
     "@deepgram/sdk": "^3.9.0",
     "@octokit/rest": "^21.1.0",

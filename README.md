@@ -118,7 +118,7 @@ If you see `Embedding function must be defined for operations requiring embeddin
 embedding package and rerun:
 
 ```bash
-pnpm add @chroma-core/chroma-cloud-qwen
+pnpm add @chroma-core/openai
 ```
 
 ## Trigger.dev

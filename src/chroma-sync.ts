@@ -38,26 +38,20 @@ function requireChromaConfig(config: ReturnType<typeof getConfig>): {
 
 async function loadEmbeddingFunction(): Promise<unknown> {
   try {
-    const mod = await import("@chroma-core/openai");
+    const mod = await import("@chroma-core/default-embed");
     const ctor = (mod as {
-      OpenAIEmbeddingFunction?: new (options: {
-        apiKeyEnvVar?: string;
-        modelName?: string;
-      }) => unknown;
-    }).OpenAIEmbeddingFunction;
+      DefaultEmbeddingFunction?: new () => unknown;
+    }).DefaultEmbeddingFunction;
 
     if (!ctor) {
-      throw new Error("OpenAIEmbeddingFunction export not found");
+      throw new Error("DefaultEmbeddingFunction export not found");
     }
 
-    return new ctor({
-      apiKeyEnvVar: "OPENAI_API_KEY",
-      modelName: "text-embedding-3-small"
-    });
+    return new ctor();
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      "Unable to load OpenAI embedding function. Install with: pnpm add @chroma-core/openai. " +
+      "Unable to load default embedding function. Install with: pnpm add @chroma-core/default-embed. " +
         `Underlying error: ${message}`
     );
   }

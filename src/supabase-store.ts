@@ -145,32 +145,68 @@ export class SupabaseStore {
     podcastSlug?: string;
   }): Promise<TranscriptDbRow[]> {
     const limit = options?.limit && options.limit > 0 ? options.limit : 100;
-    let query = this.client
+    const columns =
+      "id,key,episode_id,title,audio_url,podcast_slug,source_feed,transcript_path,published_at,episode_link,transcribed_at,content_hash,chroma_collection,chroma_document_id,chroma_synced_at,chroma_last_content_hash,chroma_sync_error";
+
+    let nullQuery = this.client
       .from("podcast_transcripts")
-      .select(
-        "id,key,episode_id,title,audio_url,podcast_slug,source_feed,transcript_path,published_at,episode_link,transcribed_at,content_hash,chroma_collection,chroma_document_id,chroma_synced_at,chroma_last_content_hash,chroma_sync_error"
-      )
+      .select(columns)
+      .or("chroma_synced_at.is.null,chroma_last_content_hash.is.null")
       .order("transcribed_at", { ascending: true })
-      .limit(limit * 3);
+      .limit(limit);
 
     if (options?.podcastSlug) {
-      query = query.eq("podcast_slug", options.podcastSlug);
+      nullQuery = nullQuery.eq("podcast_slug", options.podcastSlug);
     }
 
-    const { data, error } = await query;
-    if (error) {
-      throw new Error(this.formatSupabaseError("Supabase read error", error));
+    const { data: nullData, error: nullError } = await nullQuery;
+    if (nullError) {
+      throw new Error(this.formatSupabaseError("Supabase read error", nullError));
+    }
+    const nullRows = (nullData ?? []) as TranscriptDbRow[];
+
+    const remaining = limit - nullRows.length;
+    const seenIds = new Set(nullRows.map((row) => row.id));
+    const mismatchRows: TranscriptDbRow[] = [];
+
+    if (remaining > 0) {
+      const pageSize = 1000;
+      let from = 0;
+      while (mismatchRows.length < remaining) {
+        let scanQuery = this.client
+          .from("podcast_transcripts")
+          .select(columns)
+          .not("chroma_synced_at", "is", null)
+          .not("chroma_last_content_hash", "is", null)
+          .order("transcribed_at", { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (options?.podcastSlug) {
+          scanQuery = scanQuery.eq("podcast_slug", options.podcastSlug);
+        }
+
+        const { data: scanData, error: scanError } = await scanQuery;
+        if (scanError) {
+          throw new Error(this.formatSupabaseError("Supabase read error", scanError));
+        }
+
+        const scanRows = (scanData ?? []) as TranscriptDbRow[];
+        for (const row of scanRows) {
+          if (
+            !seenIds.has(row.id) &&
+            row.chroma_last_content_hash !== row.content_hash
+          ) {
+            mismatchRows.push(row);
+            if (mismatchRows.length >= remaining) break;
+          }
+        }
+
+        if (scanRows.length < pageSize) break;
+        from += pageSize;
+      }
     }
 
-    const rows = (data ?? []) as TranscriptDbRow[];
-    const pending = rows.filter(
-      (row) =>
-        !row.chroma_synced_at ||
-        !row.chroma_last_content_hash ||
-        row.chroma_last_content_hash !== row.content_hash
-    );
-
-    return pending.slice(0, limit);
+    return [...nullRows, ...mismatchRows].slice(0, limit);
   }
 
   async markChromaSynced(rowId: number, values: {

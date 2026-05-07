@@ -115,6 +115,8 @@ export async function syncUntranscribedEpisodes(options: SyncOptions): Promise<v
   console.log(`Untranscribed available: ${untranscribedEpisodes.length}`);
   console.log(`To transcribe this run: ${queued.length}`);
 
+  const failures: { title: string; episodeId: string; audioUrl: string; reason: string }[] = [];
+
   for (const episode of queued) {
     const key = getEpisodeKey(podcastSlug, episode.id);
     const transcriptPath = getEpisodePath(config.TRANSCRIPT_BASE_PATH, podcastSlug, episode);
@@ -125,38 +127,56 @@ export async function syncUntranscribedEpisodes(options: SyncOptions): Promise<v
       continue;
     }
 
-    const transcript = await transcribeWithDeepgram(
-      config.DEEPGRAM_API_KEY,
-      episode,
-      options.feedUrl,
-      podcastSlug
-    );
+    try {
+      const transcript = await transcribeWithDeepgram(
+        config.DEEPGRAM_API_KEY,
+        episode,
+        options.feedUrl,
+        podcastSlug
+      );
 
-    const entry: TranscriptIndexEntry = {
-      key,
-      episodeId: episode.id,
-      title: episode.title,
-      audioUrl: episode.audioUrl,
-      podcastSlug,
-      sourceFeed: options.feedUrl,
-      transcriptPath,
-      publishedAt: episode.publishedAt,
-      link: episode.link,
-      transcribedAt: transcript.createdAt,
-      contentHash: shortHash(transcript.transcriptText),
-      deepgram: {
-        model: transcript.deepgram.model,
-        language: transcript.deepgram.language,
-        duration: transcript.deepgram.duration,
-        raw: transcript.deepgram.raw
-      }
-    };
+      const entry: TranscriptIndexEntry = {
+        key,
+        episodeId: episode.id,
+        title: episode.title,
+        audioUrl: episode.audioUrl,
+        podcastSlug,
+        sourceFeed: options.feedUrl,
+        transcriptPath,
+        publishedAt: episode.publishedAt,
+        link: episode.link,
+        transcribedAt: transcript.createdAt,
+        contentHash: shortHash(transcript.transcriptText),
+        deepgram: {
+          model: transcript.deepgram.model,
+          language: transcript.deepgram.language,
+          duration: transcript.deepgram.duration,
+          raw: transcript.deepgram.raw
+        }
+      };
 
-    const markdown = renderTranscriptMarkdown(entry, transcript.transcriptText);
-    await github.upsertText(transcriptPath, markdown, `Add transcript: ${episode.title}`);
-    await supabase.upsertTranscript(entry);
+      const markdown = renderTranscriptMarkdown(entry, transcript.transcriptText);
+      await github.upsertText(transcriptPath, markdown, `Add transcript: ${episode.title}`);
+      await supabase.upsertTranscript(entry);
 
-    console.log(`  saved ${transcriptPath}`);
+      console.log(`  saved ${transcriptPath}`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`  ✗ failed: ${reason}`);
+      console.error(`    audioUrl: ${episode.audioUrl}`);
+      console.error(`    episodeId: ${episode.id}`);
+      failures.push({ title: episode.title, episodeId: episode.id, audioUrl: episode.audioUrl, reason });
+    }
+  }
+
+  const succeeded = queued.length - failures.length;
+  console.log(`\nDone. Succeeded: ${succeeded}/${queued.length}. Failed: ${failures.length}.`);
+  if (failures.length > 0) {
+    console.log("Failures:");
+    for (const f of failures) {
+      console.log(`  - ${f.title} (${f.episodeId}): ${f.reason}`);
+    }
+    process.exitCode = 1;
   }
 }
 
